@@ -74,6 +74,26 @@ describe('handleQuestion', () => {
     expect(perplexityModule.askPerplexityStreaming).not.toHaveBeenCalled();
   });
 
+describe('handleQuestion', () => {
+  let perplexityModule: any;
+  let loadConfigSpy: any;
+
+  beforeEach(async () => {
+    perplexityModule = await import('../src/perplexity.js');
+    const configModule = await import('../src/config.js');
+    loadConfigSpy = vi.spyOn(configModule, 'loadConfig').mockReturnValue({
+      ...configModule.defaultConfig,
+      output: { ...configModule.defaultConfig.output, stream: false },
+    });
+    vi.clearAllMocks();
+    process.env.PPLX_API_KEY = 'pplx-mock-key';
+  });
+
+  afterEach(() => {
+    loadConfigSpy.mockRestore();
+    delete process.env.PPLX_API_KEY;
+  });
+
   it('calls askPerplexity by default based on config', async () => {
     await handleQuestion('test default', {});
     expect(perplexityModule.askPerplexity).toHaveBeenCalledWith(
@@ -83,6 +103,7 @@ describe('handleQuestion', () => {
     );
     expect(perplexityModule.askPerplexityStreaming).not.toHaveBeenCalled();
   });
+});
 
   it('sets exitCode to 1 on error and logs formatted error', async () => {
     const error = new Error('Test API Error');
