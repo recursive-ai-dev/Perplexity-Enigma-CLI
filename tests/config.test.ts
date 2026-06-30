@@ -25,14 +25,74 @@ describe('loadConfig', () => {
 
   it('applies environment variable overrides', async () => {
     const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'enigma-config-env-'));
+    vi.stubEnv('PPLX_API_KEY', 'test-key');
+    vi.stubEnv('PPLX_API_BASE_URL', 'https://test.api.ai');
+    vi.stubEnv('PPLX_API_TIMEOUT', '30000');
     vi.stubEnv('PPLX_MODEL_DEFAULT', 'sonar');
+    vi.stubEnv('PPLX_MODEL_SEARCH_HEAVY', 'sonar-pro-search');
+    vi.stubEnv('PPLX_MODEL_REASONING', 'sonar-reasoning-large');
+    vi.stubEnv('PPLX_MODEL_FAST', 'sonar-fast');
+    vi.stubEnv('PPLX_MODEL_DEEP_RESEARCH', 'sonar-deep-search');
     vi.stubEnv('PPLX_OUTPUT_STREAM', 'true');
+    vi.stubEnv('PPLX_API_TIMEOUT_INVALID', 'invalid');
 
-    const { loadConfig } = await import('../src/config.js');
+    const { loadConfig, resolveApiKey } = await import('../src/config.js');
     const config = loadConfig(baseDir);
 
+    expect(config.api.base_url).toBe('https://test.api.ai');
+    expect(config.api.timeout).toBe(30000);
     expect(config.models.default).toBe('sonar');
+    expect(config.models.search_heavy).toBe('sonar-pro-search');
+    expect(config.models.reasoning).toBe('sonar-reasoning-large');
+    expect(config.models.fast).toBe('sonar-fast');
+    expect(config.models.deep_research).toBe('sonar-deep-search');
     expect(config.output.stream).toBe(true);
+    expect(resolveApiKey(config)).toBe('test-key');
+  });
+
+  it('handles invalid timeout parsing from env', async () => {
+    const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'enigma-config-env-'));
+    vi.stubEnv('PPLX_API_TIMEOUT', 'invalid');
+
+    const { loadConfig, defaultConfig } = await import('../src/config.js');
+    const config = loadConfig(baseDir);
+
+    expect(config.api.timeout).toBe(defaultConfig.api.timeout);
+  });
+
+  it('handles invalid numbers, booleans and strings from env gracefully', async () => {
+    const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'enigma-config-invalid-env-'));
+    vi.stubEnv('PPLX_AGENT_MAX_ITERATIONS', 'invalid');
+    vi.stubEnv('PPLX_AGENT_TEMPERATURE', 'invalid');
+    vi.stubEnv('PPLX_AGENT_MAX_TOKENS', 'invalid');
+    vi.stubEnv('PPLX_AGENT_TOP_P', 'invalid');
+    vi.stubEnv('PPLX_SEARCH_MODE', 'invalid');
+    vi.stubEnv('PPLX_INCLUDE_CITATIONS', 'invalid');
+    vi.stubEnv('PPLX_FOCUS_ON_RECENT', 'invalid');
+    vi.stubEnv('PPLX_OUTPUT_FORMAT', 'invalid');
+    vi.stubEnv('PPLX_OUTPUT_STREAM', 'invalid');
+    vi.stubEnv('PPLX_VERBOSE', 'invalid');
+
+    // Also add one random env to hit the default branch in switch block
+    process.env['PPLX_UNKNOWN'] = 'true';
+
+    const { loadConfig, defaultConfig } = await import('../src/config.js');
+    const config = loadConfig(baseDir);
+
+    expect(config.agent.max_iterations).toBe(defaultConfig.agent.max_iterations);
+    expect(config.agent.temperature).toBe(defaultConfig.agent.temperature);
+    expect(config.agent.max_tokens).toBe(defaultConfig.agent.max_tokens);
+    expect(config.agent.top_p).toBe(defaultConfig.agent.top_p);
+    expect(config.research.search_mode).toBe(defaultConfig.research.search_mode);
+    // parseBoolean returns false for 'invalid', which overrides the true default,
+    // so we expect false instead of defaultConfig
+    expect(config.research.include_citations).toBe(false);
+    expect(config.research.focus_on_recent).toBe(false);
+    expect(config.output.format).toBe(defaultConfig.output.format);
+    expect(config.output.stream).toBe(false);
+    expect(config.output.verbose).toBe(false);
+
+    delete process.env['PPLX_UNKNOWN'];
   });
 
   it('applies agent config from environment variables', async () => {
