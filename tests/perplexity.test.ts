@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+import EventEmitter from 'events';
 
 vi.mock('axios', () => {
   const post = vi.fn().mockResolvedValue({
@@ -9,6 +10,128 @@ vi.mock('axios', () => {
     default: { post, isAxiosError },
     isAxiosError,
   };
+});
+
+describe('askPerplexityStreaming', () => {
+  let stdoutSpy: any;
+
+  beforeEach(() => {
+    stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+  });
+
+  afterEach(() => {
+    stdoutSpy.mockRestore();
+  });
+
+  it('throws when the API key is missing', async () => {
+    const { askPerplexityStreaming } = await import('../src/perplexity.js');
+    const { defaultConfig } = await import('../src/config.js');
+    const config = { ...defaultConfig };
+
+    await expect(askPerplexityStreaming('hello', config)).rejects.toThrow(/API key/i);
+  });
+
+  it('handles stream data events and processes complete lines', async () => {
+    const axios = await import('axios');
+    const stream = new EventEmitter();
+
+    vi.mocked((axios as any).default.post).mockResolvedValueOnce({
+      data: stream,
+    });
+
+    const { askPerplexityStreaming } = await import('../src/perplexity.js');
+    const { defaultConfig } = await import('../src/config.js');
+
+    const config = {
+      ...defaultConfig,
+      api: { ...defaultConfig.api, key: 'pplx-test' },
+    };
+
+    const promise = askPerplexityStreaming('test question', config);
+
+    // Wait a tick for the promise to setup listeners
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    // Send partial chunk
+    stream.emit('data', Buffer.from('data: {"choices":[{"delta":{"content":"Hel"}}'));
+    // Complete chunk
+    stream.emit('data', Buffer.from(']}\n'));
+    // Send another complete chunk
+    stream.emit('data', Buffer.from('data: {"choices":[{"delta":{"content":"lo"}}]}\n'));
+    // Send [DONE]
+    stream.emit('data', Buffer.from('data: [DONE]\n'));
+
+    await promise;
+
+    expect(stdoutSpy).toHaveBeenCalledWith('Hel');
+    expect(stdoutSpy).toHaveBeenCalledWith('lo');
+    expect((axios as any).default.post).toHaveBeenCalledWith(
+      'https://api.perplexity.ai/chat/completions',
+      expect.objectContaining({
+        model: 'sonar-pro',
+        stream: true,
+      }),
+      expect.objectContaining({
+        responseType: 'stream',
+      })
+    );
+  });
+
+  it('processes remaining buffer on end event', async () => {
+    const axios = await import('axios');
+    const stream = new EventEmitter();
+
+    vi.mocked((axios as any).default.post).mockResolvedValueOnce({
+      data: stream,
+    });
+
+    const { askPerplexityStreaming } = await import('../src/perplexity.js');
+    const { defaultConfig } = await import('../src/config.js');
+
+    const config = {
+      ...defaultConfig,
+      api: { ...defaultConfig.api, key: 'pplx-test' },
+    };
+
+    const promise = askPerplexityStreaming('test question', config);
+
+    // Wait a tick for the promise to setup listeners
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    // Send a chunk without a newline to test remaining buffer
+    stream.emit('data', Buffer.from('data: {"choices":[{"delta":{"content":"world"}}]}'));
+    stream.emit('end');
+
+    await promise;
+
+    expect(stdoutSpy).toHaveBeenCalledWith('world');
+  });
+
+  it('rejects the promise on stream error', async () => {
+    const axios = await import('axios');
+    const stream = new EventEmitter();
+
+    vi.mocked((axios as any).default.post).mockResolvedValueOnce({
+      data: stream,
+    });
+
+    const { askPerplexityStreaming } = await import('../src/perplexity.js');
+    const { defaultConfig } = await import('../src/config.js');
+
+    const config = {
+      ...defaultConfig,
+      api: { ...defaultConfig.api, key: 'pplx-test' },
+    };
+
+    const promise = askPerplexityStreaming('test question', config);
+
+    // Wait a tick for the promise to setup listeners
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    stream.emit('error', new Error('Network failure'));
+
+    await expect(promise).rejects.toThrow('Stream interrupted: Network failure');
+  });
 });
 
 describe('askPerplexity', () => {

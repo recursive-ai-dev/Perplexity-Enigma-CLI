@@ -10,6 +10,7 @@
   "scripts": {
     "dev": "tsx src/index.ts",
     "build": "tsc",
+    "build:bin": "npm run build && pkg . -t node18-win-x64,node18-linux-x64,node18-macos-x64 --out-path bin",
     "test": "vitest",
     "start": "node dist/index.js",
     "lint": "eslint src/**/*.ts",
@@ -53,6 +54,7 @@
     "@types/node": "^20.0.0",
     "@types/readline-sync": "^1.4.8",
     "@vitest/coverage-v8": "^1.6.1",
+    "pkg": "^5.8.1",
     "rimraf": "^5.0.0",
     "tsx": "^4.0.0",
     "typescript": "^5.0.0",

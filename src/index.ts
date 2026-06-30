@@ -222,4 +222,4 @@ if (process.env.NODE_ENV !== 'test') {
   program.parseAsync(process.argv);
 }
 
-export { handleQuestion, startInteractiveSession };
+export { handleQuestion, startInteractiveSession, program };
